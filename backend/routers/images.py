@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 from models import ImageInfo
 from services import ImageService
 from repositories import ImageRepository
-from services.image_service import UPLOAD_DIR
+from services.image_service import UPLOAD_DIR, THUMBNAIL_DIR
 
 router = APIRouter(prefix="/api/image", tags=["images"])
 
@@ -91,7 +91,7 @@ async def get_image_info(
 async def get_image_thumbnail(
     image_id: str,
     service: ImageService = Depends(get_image_service),
-):
+) -> FileResponse:
     """
     Get image thumbnail by ID.
 
@@ -99,7 +99,18 @@ async def get_image_thumbnail(
         image_id: SHA1 hash of the image
 
     Returns:
-        Thumbnail image file
+        Thumbnail image file in WebP format
     """
-    # TODO: Implement thumbnail generation and serving
-    pass
+    # Get image metadata from database (validates image exists, returns 404 if not)
+    image_info = service.get_image_info(image_id)
+
+    # Construct thumbnail file path
+    thumbnail_path = THUMBNAIL_DIR / image_id
+
+    # Return thumbnail file
+    return FileResponse(
+        path=thumbnail_path,
+        media_type="image/webp",
+        filename=f"{Path(image_info.original_filename).stem}_thumb.webp",
+        headers={"Content-Disposition": f"inline; filename={Path(image_info.original_filename).stem}_thumb.webp"},
+    )

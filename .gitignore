@@ -1,11 +1,13 @@
+__pycache__/
+
 # Backend
 backend/venv/
-backend/__pycache__/
 backend/*.pyc
 backend/.env
 backend/.env.local
 backend/dist/
 backend/uploads/
+backend/thumbnails/
 backend/images.db
 
 # Frontend

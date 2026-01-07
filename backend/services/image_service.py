@@ -4,6 +4,8 @@ import shutil
 from pathlib import Path
 
 from fastapi import UploadFile, HTTPException
+from PIL import Image, ImageOps
+
 from models import ImageInfo
 from repositories import ImageRepository
 
@@ -22,6 +24,8 @@ ALLOWED_MIME_TYPES = {
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 UPLOAD_DIR = Path(__file__).parent.parent / "uploads"
+THUMBNAIL_DIR = Path(__file__).parent.parent / "thumbnails"
+THUMBNAIL_SIZE = 300  # 300x300 fixed area
 
 
 class ImageService:
@@ -99,6 +103,9 @@ class ImageService:
                     tags=['untagged',]
                 )
 
+                # Generate thumbnail (only for new images)
+                self._generate_thumbnail(image_id)
+
             # Return image info
             return ImageInfo(
                 id=image_id,
@@ -115,6 +122,42 @@ class ImageService:
             if tmp_path and tmp_path.exists():
                 tmp_path.unlink()
             raise HTTPException(status_code=500, detail=str(e))
+
+    def _generate_thumbnail(self, image_id: str) -> None:
+        """
+        Generate a WebP thumbnail for the uploaded image.
+
+        Creates a 300x300 thumbnail that preserves aspect ratio.
+
+        Args:
+            image_id: SHA1 hash of the image (used as filename)
+        """
+        try:
+            # Ensure thumbnail directory exists
+            THUMBNAIL_DIR.mkdir(parents=True, exist_ok=True)
+
+            # Open the original image
+            image_path = UPLOAD_DIR / image_id
+            with Image.open(image_path) as img:
+                # Apply EXIF orientation (rotate if needed)
+                img = ImageOps.exif_transpose(img)
+
+                # Convert to RGB if necessary (for RGBA, GIF, etc.)
+                if img.mode in ("RGBA", "LA", "P"):
+                    rgb_img = Image.new("RGB", img.size, (255, 255, 255))
+                    rgb_img.paste(img, mask=img.split()[-1] if img.mode == "RGBA" else None)
+                    img = rgb_img
+
+                # Calculate thumbnail size to fit in 300x300 while preserving aspect ratio
+                img.thumbnail((THUMBNAIL_SIZE, THUMBNAIL_SIZE), Image.Resampling.LANCZOS)
+
+                # Save as WebP
+                thumbnail_path = THUMBNAIL_DIR / image_id
+                img.save(thumbnail_path, format="WEBP", quality=80)
+
+        except Exception as e:
+            # Log error but don't fail the upload
+            print(f"Warning: Failed to generate thumbnail for {image_id}: {str(e)}")
 
     def get_image_info(self, image_id: str) -> ImageInfo:
         """
