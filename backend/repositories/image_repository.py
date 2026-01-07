@@ -103,3 +103,83 @@ class ImageRepository:
         conn.close()
 
         return exists
+
+    def get_images_by_tag(
+        self,
+        tag: str,
+        limit: int,
+        cursor: str | None = None,
+    ) -> list[ImageInfo]:
+        """
+        Get images filtered by tag with cursor-based pagination.
+
+        Args:
+            tag: Tag to filter by (e.g., 'untagged')
+            limit: Maximum number of results to return
+            cursor: Last image_id from previous page, or None for first page
+
+        Returns:
+            List of ImageInfo objects ordered by image_id
+        """
+        conn = get_db_connection()
+        db_cursor = conn.cursor()
+
+        # Build query with cursor support
+        if cursor:
+            db_cursor.execute(
+                '''
+                SELECT i.image_id, i.mime_type, i.file_size, i.original_file_name
+                FROM images i
+                WHERE EXISTS (
+                    SELECT 1 FROM tags t
+                    WHERE t.image_id = i.image_id AND t.tag = ?
+                )
+                AND i.image_id > ?
+                ORDER BY i.image_id
+                LIMIT ?
+                ''',
+                (tag, cursor, limit),
+            )
+        else:
+            db_cursor.execute(
+                '''
+                SELECT i.image_id, i.mime_type, i.file_size, i.original_file_name
+                FROM images i
+                WHERE EXISTS (
+                    SELECT 1 FROM tags t
+                    WHERE t.image_id = i.image_id AND t.tag = ?
+                )
+                ORDER BY i.image_id
+                LIMIT ?
+                ''',
+                (tag, limit),
+            )
+
+        rows = db_cursor.fetchall()
+        results = []
+
+        for row in rows:
+            image_id = row[0]
+            # Get all tags for this image
+            db_cursor.execute(
+                '''
+                SELECT tag
+                FROM tags
+                WHERE image_id = ?
+                ''',
+                (image_id,),
+            )
+            tag_rows = db_cursor.fetchall()
+            tags = [tag_row[0] for tag_row in tag_rows]
+
+            result = ImageInfo(
+                id=image_id,
+                mime_type=row[1],
+                file_size=row[2],
+                original_filename=row[3],
+                tags=tags,
+            )
+            results.append(result)
+
+        conn.close()
+        return results

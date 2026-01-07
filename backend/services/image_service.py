@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import UploadFile, HTTPException
 from PIL import Image, ImageOps
 
-from models import ImageInfo
+from models import ImageInfo, PaginatedImagesResponse
 from repositories import ImageRepository
 
 # Allowed image MIME types
@@ -183,4 +183,56 @@ class ImageService:
             file_size=image_data.file_size,
             original_filename=image_data.original_filename,
             tags=image_data.tags
+        )
+
+    def get_images_info(
+        self,
+        tag: str,
+        page_size: int,
+        cursor: str | None = None,
+    ) -> PaginatedImagesResponse:
+        """
+        Get images filtered by tag with cursor-based pagination.
+
+        Args:
+            tag: Tag to filter by (e.g., 'untagged', 'vacation')
+            page_size: Number of items per page (1-100)
+            cursor: Cursor from previous page, or None for first page
+
+        Returns:
+            PaginatedImagesResponse with items, next_cursor, and metadata
+
+        Raises:
+            HTTPException: For invalid page_size
+        """
+        # Validate page_size
+        if page_size < 1 or page_size > 100:
+            raise HTTPException(
+                status_code=400,
+                detail="page_size must be between 1 and 100",
+            )
+
+        # Normalize cursor
+        normalized_cursor = None if not cursor else cursor
+
+        # Request page_size + 1 to determine if there are more results
+        items = self.repository.get_images_by_tag(
+            tag=tag,
+            limit=page_size + 1,
+            cursor=normalized_cursor,
+        )
+
+        # Determine if there are more results and extract next cursor
+        has_more = len(items) > page_size
+        next_cursor = None
+
+        if has_more:
+            next_cursor = items[page_size - 1].id
+            items = items[:page_size]
+
+        return PaginatedImagesResponse(
+            items=items,
+            next_cursor=next_cursor,
+            page_size=page_size,
+            has_more=has_more,
         )

@@ -1,9 +1,9 @@
 from pathlib import Path
 
-from fastapi import APIRouter, UploadFile, File, Response, Depends
+from fastapi import APIRouter, UploadFile, File, Response, Depends, Query
 from fastapi.responses import FileResponse
 
-from models import ImageInfo
+from models import ImageInfo, PaginatedImagesResponse
 from services import ImageService
 from repositories import ImageRepository
 from services.image_service import UPLOAD_DIR, THUMBNAIL_DIR
@@ -114,3 +114,24 @@ async def get_image_thumbnail(
         filename=f"{Path(image_info.original_filename).stem}_thumb.webp",
         headers={"Content-Disposition": f"inline; filename={Path(image_info.original_filename).stem}_thumb.webp"},
     )
+
+
+@router.get("/getImagesInfo", response_model=PaginatedImagesResponse)
+async def get_images_info(
+    tag: str = Query(..., description="Tag to filter images by"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    cursor: str | None = Query(None, description="Cursor for next page"),
+    service: ImageService = Depends(get_image_service),
+) -> PaginatedImagesResponse:
+    """
+    Get images filtered by tag with cursor-based pagination.
+
+    Args:
+        tag: Tag to filter by (e.g., 'untagged', 'vacation')
+        page_size: Number of items per page (1-100, default 20)
+        cursor: Cursor from previous page for pagination, or None for first page
+
+    Returns:
+        PaginatedImagesResponse with items, next_cursor, and metadata
+    """
+    return service.get_images_info(tag=tag, page_size=page_size, cursor=cursor)
