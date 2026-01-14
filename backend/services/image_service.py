@@ -100,7 +100,7 @@ class ImageService:
                     mime_type=file.content_type,
                     file_size=file_size,
                     original_filename=file.filename,
-                    tags=['untagged',]
+                    tags=[]
                 )
 
                 # Generate thumbnail (only for new images)
@@ -187,15 +187,16 @@ class ImageService:
 
     def get_images_info(
         self,
-        tag: str,
         page_size: int,
+        tags: list[str] | None = None,
         cursor: str | None = None,
     ) -> PaginatedImagesResponse:
         """
-        Get images filtered by tag with cursor-based pagination.
+        Get images filtered by tags with cursor-based pagination.
 
         Args:
-            tag: Tag to filter by (e.g., 'untagged', 'vacation')
+            tags: Optional list of tags to filter by (e.g., ['untagged'], ['vacation', 'beach']).
+                  Images must have ALL tags (AND logic).
             page_size: Number of items per page (1-100)
             cursor: Cursor from previous page, or None for first page
 
@@ -212,13 +213,14 @@ class ImageService:
                 detail="page_size must be between 1 and 100",
             )
 
-        # Normalize cursor
+        # Normalize tags and cursor
+        normalized_tags = tags if tags else None
         normalized_cursor = None if not cursor else cursor
 
         # Request page_size + 1 to determine if there are more results
         items = self.repository.get_images_by_tag(
-            tag=tag,
             limit=page_size + 1,
+            tags=normalized_tags,
             cursor=normalized_cursor,
         )
 
@@ -236,3 +238,48 @@ class ImageService:
             page_size=page_size,
             has_more=has_more,
         )
+
+    def add_image_tag(
+        self,
+        image_id: str,
+        tag: str
+    ) -> None:
+        """
+        Adds a tag to an image.
+
+        Args:
+            image_id: The image id.
+            tag: The tag.
+
+        Returns:
+            Ok
+        """
+        self.repository.add_image_tag(image_id, tag)
+
+    def delete_image_tag(
+        self,
+        image_id: str,
+        tag: str
+    ) -> None:
+        """
+        Deletes a tag from an image.
+
+        Args:
+            image_id: The image id.
+            tag: The tag.
+
+        Returns:
+            Ok
+        """
+        self.repository.delete_image_tag(image_id, tag)
+
+    def get_image_tags(
+        self
+    ) -> List[str]:
+        """
+        Gets all image tags.
+
+        Returns:
+            List of image tags.
+        """
+        return self.repository.get_image_tags()

@@ -41,6 +41,42 @@ async def upload_image(
     )
 
 
+@router.post("/{image_id}/addImageTag/{tag}", status_code=200)
+async def add_image_tag(
+    image_id: str,
+    tag: str,
+    service: ImageService = Depends(get_image_service),
+) -> Response:
+    """
+    Add a tag to an image.
+
+    Returns:
+        200 Ok
+    """
+    service.add_image_tag(image_id, tag)
+
+    return Response(
+        status_code=200,
+    )
+
+@router.post("/{image_id}/deleteImageTag/{tag}", status_code=200)
+async def delete_image_tag(
+    image_id: str,
+    tag: str,
+    service: ImageService = Depends(get_image_service),
+) -> Response:
+    """
+    Deletes a tag from an image.
+
+    Returns:
+        200 Ok
+    """
+    service.delete_image_tag(image_id, tag)
+
+    return Response(
+        status_code=200,
+    )
+
 @router.get("/getImage/{image_id}")
 async def get_image(
     image_id: str,
@@ -118,20 +154,34 @@ async def get_image_thumbnail(
 
 @router.get("/getImagesInfo", response_model=PaginatedImagesResponse)
 async def get_images_info(
-    tag: str = Query(..., description="Tag to filter images by"),
+    tag: list[str] | None = Query(None, description="Tags to filter images by. Images must have ALL tags. Can be specified multiple times: ?tag=vacation&tag=beach"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     cursor: str | None = Query(None, description="Cursor for next page"),
     service: ImageService = Depends(get_image_service),
 ) -> PaginatedImagesResponse:
     """
-    Get images filtered by tag with cursor-based pagination.
+    Get images filtered by tags with cursor-based pagination.
 
     Args:
-        tag: Tag to filter by (e.g., 'untagged', 'vacation')
+        tag: Tags to filter by (e.g., 'untagged', 'vacation', 'beach').
+             Can specify multiple times to filter by multiple tags.
+             Images must have ALL specified tags (AND logic).
         page_size: Number of items per page (1-100, default 20)
         cursor: Cursor from previous page for pagination, or None for first page
 
     Returns:
         PaginatedImagesResponse with items, next_cursor, and metadata
     """
-    return service.get_images_info(tag=tag, page_size=page_size, cursor=cursor)
+    return service.get_images_info(tags=tag, page_size=page_size, cursor=cursor)
+
+@router.get("/getImageTags")
+async def get_image_tags(
+    service: ImageService = Depends(get_image_service),
+) -> list[str]:
+    """
+    Gets all image tags in the database.
+
+    Returns:
+        List of string tags.
+    """
+    return service.get_image_tags()

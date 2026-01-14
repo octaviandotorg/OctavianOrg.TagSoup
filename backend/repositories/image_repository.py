@@ -106,15 +106,16 @@ class ImageRepository:
 
     def get_images_by_tag(
         self,
-        tag: str,
         limit: int,
+        tags: list[str] | None = None,
         cursor: str | None = None,
     ) -> list[ImageInfo]:
         """
-        Get images filtered by tag with cursor-based pagination.
+        Get images filtered by tags with cursor-based pagination.
 
         Args:
-            tag: Tag to filter by (e.g., 'untagged')
+            tags: Optional list of tags to filter by (e.g., ['vacation', 'beach']).
+                  Images must have ALL tags (AND logic).
             limit: Maximum number of results to return
             cursor: Last image_id from previous page, or None for first page
 
@@ -124,36 +125,49 @@ class ImageRepository:
         conn = get_db_connection()
         db_cursor = conn.cursor()
 
-        # Build query with cursor support
-        if cursor:
-            db_cursor.execute(
-                '''
+        # Build query with cursor and tag support
+        if tags and len(tags) > 0:
+            # Filter by multiple tags (AND logic) - image must have all tags
+            placeholders = ','.join('?' * len(tags))
+            cursor_condition = 'AND i.image_id > ?' if cursor else ''
+
+            query = f'''
                 SELECT i.image_id, i.mime_type, i.file_size, i.original_file_name
                 FROM images i
                 WHERE EXISTS (
                     SELECT 1 FROM tags t
-                    WHERE t.image_id = i.image_id AND t.tag = ?
+                    WHERE t.image_id = i.image_id AND t.tag IN ({placeholders})
+                    GROUP BY t.image_id
+                    HAVING COUNT(DISTINCT t.tag) = {len(tags)}
                 )
-                AND i.image_id > ?
+                {cursor_condition}
                 ORDER BY i.image_id
                 LIMIT ?
-                ''',
-                (tag, cursor, limit),
-            )
+            '''
+
+            params = tags + ([cursor] if cursor else []) + [limit]
+            db_cursor.execute(query, params)
         else:
-            db_cursor.execute(
-                '''
-                SELECT i.image_id, i.mime_type, i.file_size, i.original_file_name
-                FROM images i
-                WHERE EXISTS (
-                    SELECT 1 FROM tags t
-                    WHERE t.image_id = i.image_id AND t.tag = ?
-                )
-                ORDER BY i.image_id
-                LIMIT ?
-                ''',
-                (tag, limit),
-            )
+            # No tag filter - return all images
+            if cursor:
+                db_cursor.execute(
+                    '''
+                    SELECT i.image_id, i.mime_type, i.file_size, i.original_file_name
+                    FROM images i
+                    WHERE i.image_id > ?
+                    ORDER BY i.image_id
+                    LIMIT ?
+                    ''',
+                    (cursor, limit))
+            else:
+                db_cursor.execute(
+                    '''
+                    SELECT i.image_id, i.mime_type, i.file_size, i.original_file_name
+                    FROM images i
+                    ORDER BY i.image_id
+                    LIMIT ?
+                    ''',
+                    (limit,))
 
         rows = db_cursor.fetchall()
         results = []
@@ -183,3 +197,60 @@ class ImageRepository:
 
         conn.close()
         return results
+
+    def add_image_tag(
+        self,
+        image_id: str,
+        tag: str
+    ) -> None:
+        conn = get_db_connection()
+        db_cursor = conn.cursor()
+
+        db_cursor.execute(
+            '''
+            INSERT INTO tags (image_id, tag)
+            VALUES (?, ?)
+            ON CONFLICT DO NOTHING
+            ''',
+            (image_id, tag)
+        )
+
+        conn.commit()
+        conn.close()
+
+    def delete_image_tag(
+        self,
+        image_id: str,
+        tag: str
+    ) -> None:
+        conn = get_db_connection()
+        db_cursor = conn.cursor()
+
+        db_cursor.execute(
+            '''
+            DELETE FROM tags
+            WHERE image_id = ? AND tag = ?
+            ''',
+            (image_id, tag)
+        )
+
+        conn.commit()
+        conn.close()
+
+    def get_image_tags(
+        self,
+    ) -> List[str]:
+        conn = get_db_connection()
+        db_cursor = conn.cursor()
+
+        db_cursor.execute(
+            '''
+            SELECT DISTINCT tag
+            FROM tags
+            '''
+        )
+
+        rows = db_cursor.fetchall()
+        results = [row[0] for row in rows]
+        conn.close()
+        return results;
