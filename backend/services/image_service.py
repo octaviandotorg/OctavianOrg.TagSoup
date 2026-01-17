@@ -229,7 +229,7 @@ class ImageService:
         next_cursor = None
 
         if has_more:
-            next_cursor = items[page_size - 1].id
+            next_cursor = items[page_size - 1].original_filename
             items = items[:page_size]
 
         return PaginatedImagesResponse(

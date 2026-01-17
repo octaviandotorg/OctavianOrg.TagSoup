@@ -1,9 +1,9 @@
 from pathlib import Path
 
-from fastapi import APIRouter, UploadFile, File, Response, Depends, Query
+from fastapi import APIRouter, UploadFile, File, Response, Depends, Query, HTTPException
 from fastapi.responses import FileResponse
 
-from models import ImageInfo, PaginatedImagesResponse
+from models import ImageInfo, PaginatedImagesResponse, SuccessResponse, ErrorResponse
 from services import ImageService
 from repositories import ImageRepository
 from services.image_service import UPLOAD_DIR, THUMBNAIL_DIR
@@ -21,7 +21,7 @@ def get_image_service() -> ImageService:
 async def upload_image(
     file: UploadFile = File(...),
     service: ImageService = Depends(get_image_service),
-) -> Response:
+) -> SuccessResponse | ErrorResponse:
     """
     Upload a new image.
 
@@ -29,16 +29,17 @@ async def upload_image(
     and stores metadata in the database.
 
     Returns:
-        201 Created with ImageInfo JSON and Location header
+        201 Created with SuccessResponse containing ImageInfo
     """
-    image_info = await service.upload_image(file)
-
-    return Response(
-        content=image_info.model_dump_json(),
-        status_code=201,
-        headers={"Location": f"/api/image/getImageInfo/{image_info.id}"},
-        media_type="application/json",
-    )
+    try:
+        image_info = await service.upload_image(file)
+        return SuccessResponse(data=image_info.model_dump())
+    except HTTPException as e:
+        return ErrorResponse(
+            code=e.status_code,
+            message=e.detail if isinstance(e.detail, str) else str(e.detail),
+            error_type="UPLOAD_ERROR",
+        )
 
 
 @router.post("/{image_id}/addImageTag/{tag}", status_code=200)
@@ -46,36 +47,44 @@ async def add_image_tag(
     image_id: str,
     tag: str,
     service: ImageService = Depends(get_image_service),
-) -> Response:
+) -> SuccessResponse | ErrorResponse:
     """
     Add a tag to an image.
 
     Returns:
-        200 Ok
+        200 Ok with SuccessResponse
     """
-    service.add_image_tag(image_id, tag)
-
-    return Response(
-        status_code=200,
-    )
+    try:
+        service.add_image_tag(image_id, tag)
+        return SuccessResponse()
+    except HTTPException as e:
+        return ErrorResponse(
+            code=e.status_code,
+            message=e.detail if isinstance(e.detail, str) else str(e.detail),
+            error_type="TAG_ERROR",
+        )
 
 @router.post("/{image_id}/deleteImageTag/{tag}", status_code=200)
 async def delete_image_tag(
     image_id: str,
     tag: str,
     service: ImageService = Depends(get_image_service),
-) -> Response:
+) -> SuccessResponse | ErrorResponse:
     """
     Deletes a tag from an image.
 
     Returns:
-        200 Ok
+        200 Ok with SuccessResponse
     """
-    service.delete_image_tag(image_id, tag)
-
-    return Response(
-        status_code=200,
-    )
+    try:
+        service.delete_image_tag(image_id, tag)
+        return SuccessResponse()
+    except HTTPException as e:
+        return ErrorResponse(
+            code=e.status_code,
+            message=e.detail if isinstance(e.detail, str) else str(e.detail),
+            error_type="TAG_ERROR",
+        )
 
 @router.get("/getImage/{image_id}")
 async def get_image(
@@ -106,11 +115,11 @@ async def get_image(
     )
 
 
-@router.get("/getImageInfo/{image_id}", response_model=ImageInfo)
+@router.get("/getImageInfo/{image_id}", response_model=SuccessResponse | ErrorResponse)
 async def get_image_info(
     image_id: str,
     service: ImageService = Depends(get_image_service),
-) -> ImageInfo:
+) -> SuccessResponse | ErrorResponse:
     """
     Get image metadata by ID.
 
@@ -118,9 +127,17 @@ async def get_image_info(
         image_id: SHA1 hash of the image
 
     Returns:
-        ImageInfo with image metadata
+        SuccessResponse with ImageInfo data
     """
-    return service.get_image_info(image_id)
+    try:
+        image_info = service.get_image_info(image_id)
+        return SuccessResponse(data=image_info.model_dump())
+    except HTTPException as e:
+        return ErrorResponse(
+            code=e.status_code,
+            message=e.detail if isinstance(e.detail, str) else str(e.detail),
+            error_type="NOT_FOUND",
+        )
 
 
 @router.get("/getImageThumbnail/{image_id}")
@@ -152,13 +169,13 @@ async def get_image_thumbnail(
     )
 
 
-@router.get("/getImagesInfo", response_model=PaginatedImagesResponse)
+@router.get("/getImagesInfo", response_model=SuccessResponse | ErrorResponse)
 async def get_images_info(
     tag: list[str] | None = Query(None, description="Tags to filter images by. Images must have ALL tags. Can be specified multiple times: ?tag=vacation&tag=beach"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     cursor: str | None = Query(None, description="Cursor for next page"),
     service: ImageService = Depends(get_image_service),
-) -> PaginatedImagesResponse:
+) -> SuccessResponse | ErrorResponse:
     """
     Get images filtered by tags with cursor-based pagination.
 
@@ -170,18 +187,34 @@ async def get_images_info(
         cursor: Cursor from previous page for pagination, or None for first page
 
     Returns:
-        PaginatedImagesResponse with items, next_cursor, and metadata
+        SuccessResponse with PaginatedImagesResponse data
     """
-    return service.get_images_info(tags=tag, page_size=page_size, cursor=cursor)
+    try:
+        paginated_response = service.get_images_info(tags=tag, page_size=page_size, cursor=cursor)
+        return SuccessResponse(data=paginated_response.model_dump())
+    except HTTPException as e:
+        return ErrorResponse(
+            code=e.status_code,
+            message=e.detail if isinstance(e.detail, str) else str(e.detail),
+            error_type="QUERY_ERROR",
+        )
 
-@router.get("/getImageTags")
+@router.get("/getImageTags", response_model=SuccessResponse | ErrorResponse)
 async def get_image_tags(
     service: ImageService = Depends(get_image_service),
-) -> list[str]:
+) -> SuccessResponse | ErrorResponse:
     """
     Gets all image tags in the database.
 
     Returns:
-        List of string tags.
+        SuccessResponse with list of string tags.
     """
-    return service.get_image_tags()
+    try:
+        tags = service.get_image_tags()
+        return SuccessResponse(data=tags)
+    except HTTPException as e:
+        return ErrorResponse(
+            code=e.status_code,
+            message=e.detail if isinstance(e.detail, str) else str(e.detail),
+            error_type="QUERY_ERROR",
+        )

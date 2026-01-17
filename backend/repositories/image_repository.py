@@ -129,20 +129,26 @@ class ImageRepository:
         if tags and len(tags) > 0:
             # Filter by multiple tags (AND logic) - image must have all tags
             placeholders = ','.join('?' * len(tags))
-            cursor_condition = 'AND i.image_id > ?' if cursor else ''
+            cursor_condition = 'AND i2.original_file_name > ?' if cursor else ''
 
             query = f'''
-                SELECT i.image_id, i.mime_type, i.file_size, i.original_file_name
+                SELECT i.image_id, i.mime_type, i.file_size, i.original_file_name, t.tag
                 FROM images i
-                WHERE EXISTS (
-                    SELECT 1 FROM tags t
-                    WHERE t.image_id = i.image_id AND t.tag IN ({placeholders})
-                    GROUP BY t.image_id
-                    HAVING COUNT(DISTINCT t.tag) = {len(tags)}
+                LEFT JOIN tags t ON i.image_id = t.image_id
+                WHERE i.image_id IN (
+                    SELECT i2.image_id
+                    FROM images i2
+                    WHERE EXISTS (
+                        SELECT 1 FROM tags t2
+                        WHERE t2.image_id = i2.image_id AND t2.tag IN ({placeholders})
+                        GROUP BY t2.image_id
+                        HAVING COUNT(DISTINCT t2.tag) = {len(tags)}
+                    )
+                    {cursor_condition}
+                    ORDER BY i2.original_file_name
+                    LIMIT ?
                 )
-                {cursor_condition}
-                ORDER BY i.image_id
-                LIMIT ?
+                ORDER BY i.original_file_name, t.tag
             '''
 
             params = tags + ([cursor] if cursor else []) + [limit]
@@ -150,53 +156,55 @@ class ImageRepository:
         else:
             # No tag filter - return all images
             if cursor:
-                db_cursor.execute(
-                    '''
-                    SELECT i.image_id, i.mime_type, i.file_size, i.original_file_name
+                query = '''
+                    SELECT i.image_id, i.mime_type, i.file_size, i.original_file_name, t.tag
                     FROM images i
-                    WHERE i.image_id > ?
-                    ORDER BY i.image_id
-                    LIMIT ?
-                    ''',
-                    (cursor, limit))
+                    LEFT JOIN tags t ON i.image_id = t.image_id
+                    WHERE i.image_id IN (
+                        SELECT image_id
+                        FROM images
+                        WHERE original_file_name > ?
+                        ORDER BY original_file_name
+                        LIMIT ?
+                    )
+                    ORDER BY i.original_file_name, t.tag
+                '''
+                db_cursor.execute(query, (cursor, limit))
             else:
-                db_cursor.execute(
-                    '''
-                    SELECT i.image_id, i.mime_type, i.file_size, i.original_file_name
+                query = '''
+                    SELECT i.image_id, i.mime_type, i.file_size, i.original_file_name, t.tag
                     FROM images i
-                    ORDER BY i.image_id
-                    LIMIT ?
-                    ''',
-                    (limit,))
+                    LEFT JOIN tags t ON i.image_id = t.image_id
+                    WHERE i.image_id IN (
+                        SELECT image_id
+                        FROM images
+                        ORDER BY original_file_name
+                        LIMIT ?
+                    )
+                    ORDER BY i.original_file_name, t.tag
+                '''
+                db_cursor.execute(query, (limit,))
 
         rows = db_cursor.fetchall()
-        results = []
+        conn.close()
 
+        # Build ImageInfo objects from result set
+        # Results may have multiple rows per image (one per tag)
+        results = {}
         for row in rows:
             image_id = row[0]
-            # Get all tags for this image
-            db_cursor.execute(
-                '''
-                SELECT tag
-                FROM tags
-                WHERE image_id = ?
-                ''',
-                (image_id,),
-            )
-            tag_rows = db_cursor.fetchall()
-            tags = [tag_row[0] for tag_row in tag_rows]
+            if image_id not in results:
+                results[image_id] = ImageInfo(
+                    id=image_id,
+                    mime_type=row[1],
+                    file_size=row[2],
+                    original_filename=row[3],
+                    tags=[]
+                )
+            if row[4]:  # tag is not null
+                results[image_id].tags.append(row[4])
 
-            result = ImageInfo(
-                id=image_id,
-                mime_type=row[1],
-                file_size=row[2],
-                original_filename=row[3],
-                tags=tags,
-            )
-            results.append(result)
-
-        conn.close()
-        return results
+        return list(results.values())
 
     def add_image_tag(
         self,

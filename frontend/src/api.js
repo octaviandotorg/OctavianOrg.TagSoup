@@ -17,12 +17,13 @@ async function getImagesInfo(pageSize = 20, cursor = null, tags = []) {
     },
   });
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch image info: ${response.statusText}`);
+  const result = await response.json();
+
+  if (!result.success) {
+    throw new Error(`${result.error_type}: ${result.message}`);
   }
 
-  const data = await response.json();
-  return data;
+  return result.data;
 }
 
 async function getImage(imageId) {
@@ -56,13 +57,13 @@ async function uploadImage(file) {
     body: formData,
   });
 
-  const data = await response.json();
+  const result = await response.json();
 
-  if (!response.ok) {
-    throw new Error(data.detail || 'Upload failed');
+  if (!result.success) {
+    throw new Error(`${result.error_type}: ${result.message}`);
   }
 
-  return data;
+  return result.data;
 }
 
 async function addImageTag(imageId, tag) {
@@ -70,8 +71,10 @@ async function addImageTag(imageId, tag) {
     method: 'POST'
   });
 
-  if (!response.ok) {
-    throw new Error(`Failed to add tag: ${response.statusText}`);
+  const result = await response.json();
+
+  if (!result.success) {
+    throw new Error(`${result.error_type}: ${result.message}`);
   }
 }
 
@@ -80,8 +83,10 @@ async function deleteImageTag(imageId, tag) {
     method: 'POST'
   });
 
-  if (!response.ok) {
-    throw new Error(`Failed to delete tag: ${response.statusText}`);
+  const result = await response.json();
+
+  if (!result.success) {
+    throw new Error(`${result.error_type}: ${result.message}`);
   }
 }
 
@@ -90,13 +95,13 @@ async function getImageTags() {
     method: 'GET'
   });
 
-  const data = await response.json();
+  const result = await response.json();
 
-  if (!response.ok) {
-    throw new Error(data.detail || 'Upload failed');
+  if (!result.success) {
+    throw new Error(`${result.error_type}: ${result.message}`);
   }
 
-  return data;
+  return result.data;
 }
 
 export { addImageTag, deleteImageTag, getImagesInfo, getImage, getImageTags, getImageThumbnail, uploadImage };
