@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from db import init_db
 from routers import router
 
@@ -11,9 +12,15 @@ app.add_middleware(
     allow_origins=["http://localhost:5173", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*"]
 )
 
+# Gzip support
+app.add_middleware(
+    GZipMiddleware,
+    minimum_size=1000,
+    compresslevel=9
+)
 
 # Include image routes
 app.include_router(router)

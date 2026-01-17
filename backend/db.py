@@ -22,6 +22,7 @@ def init_db():
             original_file_name TEXT NOT NULL
         )
     ''')
+    cursor.execute('CREATE INDEX idx_images_original_filename ON images(original_file_name)')
     conn.commit()
 
     cursor.execute('''
